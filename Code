@@ -1,0 +1,98 @@
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import StackingClassifier
+import matplotlib.pyplot as plt
+
+# Load the dataset
+data = pd.read_csv('/content/creditcard.csv')
+
+# Handling missing values
+print("Missing values before handling:")
+print(data.isnull().sum())
+
+# Create a mask for rows with missing values
+mask = data.isnull().any(axis=1)
+
+# Fill missing values with the mean
+imputer = SimpleImputer(strategy='mean')
+data_filled = pd.DataFrame(imputer.fit_transform(data), columns=data.columns)
+
+# Print missing values after handling
+print("\nMissing values after handling:")
+print(data_filled.isnull().sum())
+
+# Filter the data to keep only rows without missing values
+data_filtered = data_filled[~mask]
+
+# Assuming 'Class' is the target variable and rest are features
+X = data_filtered.drop('Class', axis=1)
+y = data_filtered['Class']
+
+# Convert the target variable to binary values
+y_binary = y.apply(lambda x: 1 if x > 0 else 0)
+
+# Set a random seed for reproducibility
+random_state = 42
+
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y_binary, test_size=0.2, random_state=random_state)
+
+# Standardize the features
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Define the base models
+base_models = [
+    ('rf', RandomForestClassifier(n_estimators=100, random_state=random_state)),
+    ('lr', LogisticRegression(random_state=random_state))
+]
+
+# Define the meta-model
+meta_model = RandomForestClassifier(n_estimators=100, random_state=random_state)
+
+# Create the stacking classifier
+stacking_model = StackingClassifier(estimators=base_models, final_estimator=meta_model, cv=5)
+
+# Train the stacking model
+stacking_model.fit(X_train_scaled, y_train)
+
+# Model Evaluation
+y_pred = stacking_model.predict(X_test_scaled)
+
+# Evaluation metrics
+accuracy = accuracy_score(y_test, y_pred)
+precision = precision_score(y_test, y_pred, zero_division=1)
+recall = recall_score(y_test, y_pred, zero_division=1)
+f1 = f1_score(y_test, y_pred, zero_division=1)
+
+print("\nEvaluation Metrics for Stacking Classifier:")
+print("Accuracy:", accuracy)
+print("Precision:", precision)
+print("Recall:", recall)
+print("F1 Score:", f1)
+
+# Plotting the bar graph
+metrics = ['Accuracy', 'Precision', 'Recall', 'F1 Score']
+values = [accuracy, precision, recall, f1]
+
+plt.figure(figsize=(10, 6))
+plt.bar(metrics, values, color=['blue', 'green', 'red', 'purple'])
+plt.xlabel('Metrics')
+plt.ylabel('Values')
+plt.title('Evaluation Metrics')
+plt.ylim(0.0, 1.0)  # Set the y-axis limit to 0-1 for percentage values
+plt.grid(axis='y', linestyle='--', alpha=0.6)
+plt.show()
+
+# Additional output showing whether the transaction is predicted as fraud or not
+y_pred_fraud = stacking_model.predict(X)
+data_filtered['Predicted_Fraud'] = y_pred_fraud
+
+# Save the updated dataset with predicted fraud column
+data_filtered.to_csv("predicted_fraud_dataset.csv", index=False)
